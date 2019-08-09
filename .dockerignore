@@ -1,0 +1,11 @@
+packages/*
+node_modules
+.dockerignore
+.drone.yml
+.git
+.gitignore
+.npmignore
+.nvmrc
+CHANGELOG.md
+Dockerfile
+README.md
