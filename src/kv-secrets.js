@@ -12,42 +12,30 @@ process.env.AZURE_CLIENT_SECRET = Buffer.from(process.env.AZURE_CLIENT_SECRET, '
 const localURL = process.env.LK_VURI
 const globalURL = process.env.LK_GVURI
 
+let credentials
+let localClient
+let globalClient
+
 async function auth () {
-  // Function static variable to cache the authentication credentials
-  if (auth.credentials === undefined) {
-    auth.credentials = new DefaultAzureCredential()
+  if (credentials === undefined) {
+    credentials = new DefaultAzureCredential()
   }
-  return auth.credentials
 }
 
-// async function auth () {
-//   return new DefaultAzureCredential()
-// }
-
-async function getLocalClient () {
-  const credentials = await auth().catch((error) => { console.error(error) })
-
-  // Function static variable to cache the local client context
-  if (getLocalClient.context === undefined) {
-    getLocalClient.context = new SecretsClient(localURL, credentials)
+async function setLocalClient () {
+  if (localClient === undefined) {
+    localClient = new SecretsClient(localURL, credentials)
   }
-  return getLocalClient.context
 }
 
-async function getGlobalClient () {
-  const credentials = await auth().catch((error) => { console.error(error) })
-
-  if (getGlobalClient.context === undefined) {
-    getGlobalClient.context = new SecretsClient(globalURL, credentials)
+async function setGlobalClient () {
+  if (globalClient === undefined) {
+    globalClient = new SecretsClient(globalURL, credentials)
   }
-  return getGlobalClient.context
 }
 
 // Get all secret objects from both global and local vaults
 exports.getAllSecrets = async function () {
-  const globalClient = await getGlobalClient().catch((error) => { console.error(error) })
-  const localClient = await getLocalClient().catch((error) => { console.error(error) })
-
   // Store the promises in this array
   // Resolve them all and return the results
   const localSecrets = []
@@ -77,9 +65,6 @@ exports.getAllSecrets = async function () {
 
 // Get a single secret object, checking both global and local vaults
 exports.getSecret = async function (keyname) {
-  const globalClient = await getGlobalClient().catch((error) => { console.error(error) })
-  const localClient = await getLocalClient().catch((error) => { console.error(error) })
-
   // Check the global Vault first
   const secret = await globalClient.getSecret(keyname)
     .catch((_error) => {
@@ -94,3 +79,7 @@ exports.getSecret = async function (keyname) {
   // Otherwise return the promise from the local vault search
   return localClient.getSecret(keyname)
 }
+
+auth().catch((error) => { console.error(error) })
+setGlobalClient().catch((error) => { console.error(error) })
+setLocalClient().catch((error) => { console.error(error) })

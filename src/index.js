@@ -1,49 +1,70 @@
 'use strict'
 
 const kv = require('./kv-secrets.js')
+const restify = require('restify')
 
-// Format the secret object into a JSON string for returning to console or consumers
-function stringifySecret (secret) {
-  const res = {}
-  res[secret.name] = secret.value
-  return JSON.stringify(res)
+const secretsCache = {
+  timestamp: Math.floor(new Date() / 1000)
 }
 
-// Format the array of secret objects into a JSON string for returning to console or consumers
-function stringifySecrets (secrets) {
+// Filter out the name and value from the secret object
+function filterSecrets (secrets) {
   const res = {}
   for (const secret of secrets) {
     res[secret.name] = secret.value
   }
-  return JSON.stringify(res)
+  return res
 }
 
-async function start () {
-  // Tests getting a global vault secret
-  await kv.getSecret('datadog-apiKey')
-    .then((secret) => {
-      console.log(stringifySecret(secret))
-    })
-    .catch((error) => {
-      console.log(`${error}`)
-    })
+process.on('SIGTERM', function () {
+  server.close(function () {
+    process.exit(0)
+  })
+})
 
-  // Tests getting a local vault secret
-  await kv.getSecret('auth-jwtSecret')
-    .then((secret) => {
-      console.log(stringifySecret(secret))
-    })
-    .catch((error) => {
-      console.log(`${error}`)
-    })
-
-  // Tests getting all secrets
-  // await kv.getAllSecrets().then((secrets) => {
-  //   console.log(stringifySecrets(secrets))
-  // })
+// Check if the cache is still valid.
+// If it's expired, refresh it, otherwise do nothing.
+async function updateSecrets (ttl = 20) { // default 600 seconds, 10 minutes
+  const currentTime = Math.floor(new Date() / 1000)
+  console.info(`cache ttl: ${ttl - (currentTime - secretsCache.timestamp)}`)
+  if (typeof secretsCache.secrets === 'undefined' || (currentTime - secretsCache.timestamp) >= ttl) {
+    console.warn('refreshing cache. waiting ...')
+    secretsCache.secrets = await kv.getAllSecrets()
+    secretsCache.timestamp = currentTime
+  }
 }
 
-start()
+// REST Server definitions
 
+const port = '9500'
+const server = restify.createServer({
+  name: 'KeyHandler',
+  version: '2.0.0',
+  url: 'localhost'
+  // certificate: cert,
+  // key: key
+})
 
-/// TODO HTTP server
+let hits = 0
+
+server.pre(restify.plugins.pre.dedupeSlashes())
+server.pre((req, res, next) => {
+  console.log(`incoming request ${++hits} to ${req.toString()}`)
+  next()
+})
+
+server.get('/_status', (req, res, next) => {
+  res.send('OK')
+  next()
+})
+
+server.get('/allsecrets',
+  async (req, res, next) => {
+    await updateSecrets()
+    res.send(filterSecrets(secretsCache.secrets))
+    next()
+  })
+
+server.listen(port, () => {
+  console.log(`${server.name} listening at ${server.url}`)
+})

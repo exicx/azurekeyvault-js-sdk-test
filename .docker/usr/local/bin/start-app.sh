@@ -1,3 +1,3 @@
 #!/bin/bash
 
-exec node src/main.js
+exec node src/index.js
